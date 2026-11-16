@@ -32,13 +32,33 @@ def index() -> None:
 
     t0 = time.time()
     vacancies = load()
+    if not vacancies:
+        sys.exit("no vacancies to index; run sync first")
     build_index(vacancies, "data/index")
     print(f"indexed {len(vacancies)} vacancies in {time.time() - t0:.1f}s")
 
 
-COMMANDS = {"sync": sync, "stats": stats, "index": index}
+def search_cmd() -> None:
+    import argparse
+
+    import lancedb
+
+    from copilot.search import search
+
+    ap = argparse.ArgumentParser(prog="python -m copilot search")
+    ap.add_argument("query")
+    ap.add_argument("--mode", choices=["bm25", "vector", "hybrid", "rerank"], default="rerank")
+    args = ap.parse_args(sys.argv[2:])
+    if not args.query.strip():
+        sys.exit("empty query")
+    table = lancedb.connect("data/index").open_table("vacancies")
+    for h in search(table, args.query, mode=args.mode):
+        print(f"{h.score:8.3f}  {h.title}\n          {h.link}")
+
+
+COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd}
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
-        sys.exit("usage: python -m copilot sync|stats|index")
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] != "search"):
+        sys.exit("usage: python -m copilot sync|stats|index|search")
     COMMANDS[sys.argv[1]]()
