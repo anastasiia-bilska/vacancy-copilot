@@ -18,6 +18,7 @@ def test_publish_uploads_dataset_without_tag():
     assert publish("data/index", "me/idx", api=api) == "abc123"
     kw = api.upload_folder.call_args.kwargs
     assert kw["repo_type"] == "dataset" and kw["repo_id"] == "me/idx" and kw["folder_path"] == "data/index"
+    assert kw["delete_patterns"] == "*"
     api.create_tag.assert_not_called()
 
 

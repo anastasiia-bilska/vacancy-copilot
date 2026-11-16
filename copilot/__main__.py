@@ -83,7 +83,10 @@ def publish_cmd() -> None:
     ap = argparse.ArgumentParser(prog="python -m copilot publish")
     ap.add_argument("--tag", help="snapshot tag, e.g. eval-2026-11-16 (never overwritten)")
     args = ap.parse_args(sys.argv[2:])
-    sha = publish("data/index", os.environ["HF_INDEX_REPO"], tag=args.tag)
+    repo = os.environ.get("HF_INDEX_REPO")
+    if not repo:
+        sys.exit("HF_INDEX_REPO is not set")
+    sha = publish("data/index", repo, tag=args.tag)
     print(f"published commit {sha[:8]}" + (f" tagged {args.tag}" if args.tag else ""))
 
 

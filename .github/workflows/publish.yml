@@ -6,14 +6,13 @@ on:
   workflow_dispatch:
 
 # Logs carry counts only: no set -x, no printing of rows or env (public repo).
+permissions:
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      COPILOT_DATABASE_URL: ${{ secrets.COPILOT_DATABASE_URL }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -25,14 +24,20 @@ jobs:
           key: hf-models-BAAI-bge-m3-BAAI-bge-reranker-v2-m3
       - name: sync
         run: uv run python -m copilot sync
+        env:
+          COPILOT_DATABASE_URL: ${{ secrets.COPILOT_DATABASE_URL }}
       - name: index
         run: uv run python -m copilot index
       - name: publish
         run: uv run python -m copilot publish
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
       - name: restart space
         run: >
           uv run python -c
           "import os; from huggingface_hub import HfApi;
           HfApi().restart_space(os.environ['SPACE_ID'])"
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SPACE_ID: ${{ secrets.HF_SPACE_ID }}

@@ -72,7 +72,8 @@ Done by the owner; nothing here is run by CI setup or by the agent.
 4. Push this repo to the Space (`git remote add space https://huggingface.co/spaces/<user>/<space>`,
    `git push space main`). The front-matter above is the Space config; `requirements.txt` is
    exported with `uv export --no-hashes --no-dev -o requirements.txt` (re-run after changing
-   dependencies).
+   dependencies, then re-add the first line `--extra-index-url https://download.pytorch.org/whl/cpu`,
+   which pip needs for the CPU-only torch build).
 5. Publish the eval snapshot once, then record it:
    ```bash
    HF_INDEX_REPO=... uv run python -m copilot publish --tag eval-<date of the snapshot>
@@ -81,4 +82,5 @@ Done by the owner; nothing here is run by CI setup or by the agent.
    An existing tag is refused, never moved.
 6. Run the `publish` workflow by hand (Actions, workflow_dispatch). Expected: green, logs show
    counts only, the Space reloads and answers a query. After that it runs daily at 04:00 UTC
-   (sync, index, publish, restart Space).
+   (sync, index, publish, restart Space). GitHub disables scheduled workflows in public repos
+   after 60 days without repo activity; re-enable it in Actions if that happens.

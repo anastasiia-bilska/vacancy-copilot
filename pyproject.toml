@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "pyarrow>=17",
     "sentence-transformers>=6.3.0",
+    "torch>=2.4",
     "transformers>=4.44",
 ]
 
@@ -18,3 +19,11 @@ dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
