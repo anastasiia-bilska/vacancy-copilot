@@ -75,17 +75,33 @@ def label_cmd() -> None:
     apply_labels("eval/pool.csv", "eval/queries.jsonl")
 
 
+def publish_cmd() -> None:
+    import argparse
+
+    from copilot.publish import publish
+
+    ap = argparse.ArgumentParser(prog="python -m copilot publish")
+    ap.add_argument("--tag", help="snapshot tag, e.g. eval-2026-11-16 (never overwritten)")
+    args = ap.parse_args(sys.argv[2:])
+    sha = publish("data/index", os.environ["HF_INDEX_REPO"], tag=args.tag)
+    print(f"published commit {sha[:8]}" + (f" tagged {args.tag}" if args.tag else ""))
+
+
 def eval_cmd() -> None:
+    import argparse
+
     from copilot.evaluate import load_queries, run_eval
 
-    res = run_eval(load_queries(), _table())
+    ap = argparse.ArgumentParser(prog="python -m copilot eval")
+    ap.add_argument("--snapshot", help="HF index tag recorded in results (default: date-rowcount)")
+    res = run_eval(load_queries(), _table(), snapshot=ap.parse_args(sys.argv[2:]).snapshot)
     print(f"evaluated {res['queries_used']} labelled queries; see eval/results.md")
 
 
 COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd,
-            "pool": pool_cmd, "label": label_cmd, "eval": eval_cmd}
+            "pool": pool_cmd, "label": label_cmd, "eval": eval_cmd, "publish": publish_cmd}
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] != "search"):
-        sys.exit("usage: python -m copilot sync|stats|index|search|pool|label|eval")
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] not in ("search", "eval", "publish")):
+        sys.exit("usage: python -m copilot sync|stats|index|search|pool|label|eval|publish")
     COMMANDS[sys.argv[1]]()

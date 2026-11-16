@@ -62,11 +62,11 @@ def apply_labels(csv_path: str, queries_path: str) -> None:
         f.writelines(json.dumps(q, ensure_ascii=False) + "\n" for q in queries)
 
 
-def run_eval(queries, table, out_dir="eval", embed_fn=embed, rerank_fn=rerank) -> dict:
+def run_eval(queries, table, out_dir="eval", embed_fn=embed, rerank_fn=rerank, snapshot=None) -> dict:
     os.makedirs(out_dir, exist_ok=True)
     used = [q for q in queries if q.get("relevant")]
-    # ponytail: snapshot = today + row count; Task 7 replaces it with the HF tag
-    res = {"snapshot": f"{date.today()}-{table.count_rows()}", "queries_used": len(used), "variants": {}}
+    # ponytail: without --snapshot (the HF tag) fall back to today + row count, which is not reproducible
+    res = {"snapshot": snapshot or f"{date.today()}-{table.count_rows()}", "queries_used": len(used), "variants": {}}
     for mode in VARIANTS:
         ranked = {q["id"]: [h.id for h in _search(table, q, mode, max(KS), embed_fn, rerank_fn)] for q in used}
         rel = {q["id"]: set(q["relevant"]) for q in used}

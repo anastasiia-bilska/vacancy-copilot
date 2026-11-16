@@ -72,3 +72,11 @@ def test_apply_labels_keeps_labels_of_queries_not_in_csv(tmp_path):
     apply_labels(str(p), str(qs))
     got = {q["id"]: q["relevant"] for q in map(json.loads, qs.read_text().splitlines())}
     assert got == {"q1": ["dou:1"], "q2": ["dou:2"]}
+
+
+def test_run_eval_uses_given_snapshot(tmp_path):
+    t, c = _table(tmp_path / "idx"), Calls()
+    qs = [{"id": "q1", "query": "Python", "filters": None, "relevant": ["dou:1"]}]
+    res = run_eval(qs, t, out_dir=str(tmp_path / "o"), embed_fn=c.embed, rerank_fn=c.rerank, snapshot="eval-2026-11-16")
+    assert res["snapshot"] == "eval-2026-11-16"
+    assert "`eval-2026-11-16`" in (tmp_path / "o" / "results.md").read_text()
