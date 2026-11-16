@@ -2,7 +2,14 @@
 name = "vacancy-copilot"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["psycopg[binary]>=3.2", "pyarrow>=17", "transformers>=4.44"]
+dependencies = [
+    "lancedb>=0.41.0",
+    "numpy>=2.5.5",
+    "psycopg[binary]>=3.2",
+    "pyarrow>=17",
+    "sentence-transformers>=6.3.0",
+    "transformers>=4.44",
+]
 
 [dependency-groups]
 dev = ["pytest>=8"]

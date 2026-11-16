@@ -25,9 +25,20 @@ def stats() -> None:
         print(f"{name}: {lengths[min(len(lengths) - 1, int(q * len(lengths)))]} tokens")
 
 
-COMMANDS = {"sync": sync, "stats": stats}
+def index() -> None:
+    import time
+
+    from copilot.index import build_index
+
+    t0 = time.time()
+    vacancies = load()
+    build_index(vacancies, "data/index")
+    print(f"indexed {len(vacancies)} vacancies in {time.time() - t0:.1f}s")
+
+
+COMMANDS = {"sync": sync, "stats": stats, "index": index}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
-        sys.exit("usage: python -m copilot sync|stats")
+        sys.exit("usage: python -m copilot sync|stats|index")
     COMMANDS[sys.argv[1]]()
