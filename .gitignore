@@ -1,0 +1,7 @@
+data/
+cv/
+.env
+.venv/
+__pycache__/
+.superpowers/
+eval/pool.csv
