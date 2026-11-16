@@ -59,3 +59,16 @@ def test_pool_and_apply_labels(tmp_path):
         w.writerows(got)
     apply_labels(str(csv_path), str(qs))
     assert json.loads(qs.read_text())["relevant"] == ["dou:1"]
+
+
+def test_apply_labels_keeps_labels_of_queries_not_in_csv(tmp_path):
+    qs = tmp_path / "queries.jsonl"
+    qs.write_text("".join(json.dumps(q) + "\n" for q in (
+        {"id": "q1", "query": "a", "filters": None, "relevant": ["dou:1"]},
+        {"id": "q2", "query": "b", "filters": None, "relevant": []},
+    )))
+    p = tmp_path / "pool.csv"
+    p.write_text("query_id,vacancy_id,title,link,relevant\nq2,dou:2,t,l,+\n")
+    apply_labels(str(p), str(qs))
+    got = {q["id"]: q["relevant"] for q in map(json.loads, qs.read_text().splitlines())}
+    assert got == {"q1": ["dou:1"], "q2": ["dou:2"]}

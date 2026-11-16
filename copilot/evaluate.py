@@ -49,20 +49,22 @@ def pool(queries, table, depth=20, out="eval/pool.csv", embed_fn=embed, rerank_f
 
 def apply_labels(csv_path: str, queries_path: str) -> None:
     with open(csv_path, newline="") as f:
-        marked: dict[str, list[str]] = {}
+        marked: dict[str, list[str]] = {}  # only queries present in the CSV are touched
         for r in csv.DictReader(f):
+            marked.setdefault(r["query_id"], [])
             if r["relevant"].strip().lower() in TRUE:
-                marked.setdefault(r["query_id"], []).append(r["vacancy_id"])
+                marked[r["query_id"]].append(r["vacancy_id"])
     queries = load_queries(queries_path)
     for q in queries:
-        q["relevant"] = marked.get(q["id"], [])
+        if q["id"] in marked:
+            q["relevant"] = marked[q["id"]]
     with open(queries_path, "w") as f:
         f.writelines(json.dumps(q, ensure_ascii=False) + "\n" for q in queries)
 
 
 def run_eval(queries, table, out_dir="eval", embed_fn=embed, rerank_fn=rerank) -> dict:
     os.makedirs(out_dir, exist_ok=True)
-    used = [q for q in queries if q["relevant"]]
+    used = [q for q in queries if q.get("relevant")]
     # ponytail: snapshot = today + row count; Task 7 replaces it with the HF tag
     res = {"snapshot": f"{date.today()}-{table.count_rows()}", "queries_used": len(used), "variants": {}}
     for mode in VARIANTS:
@@ -75,8 +77,9 @@ def run_eval(queries, table, out_dir="eval", embed_fn=embed, rerank_fn=rerank) -
     with open(f"{out_dir}/results.json", "w") as f:
         json.dump(res, f, indent=2, ensure_ascii=False)
     head = ["recall@5", "recall@10", "recall@20", "mrr"]
+    labels = head[:3] + ["MRR@20"]
     md = [f"Snapshot `{res['snapshot']}`, {len(used)} labelled queries.", "",
-          "| variant | " + " | ".join(head) + " |", "|---|" + "---|" * len(head)]
+          "| variant | " + " | ".join(labels) + " |", "|---|" + "---|" * len(head)]
     md += [f"| {m} | " + " | ".join(f"{res['variants'][m]['metrics'][h]:.3f}" for h in head) + " |"
            for m in VARIANTS]
     with open(f"{out_dir}/results.md", "w") as f:
