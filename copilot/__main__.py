@@ -8,7 +8,8 @@ def sync() -> None:
     import psycopg
     from psycopg.rows import dict_row
 
-    with psycopg.connect(os.environ["COPILOT_DATABASE_URL"], row_factory=dict_row) as conn:
+    with psycopg.connect(os.environ["COPILOT_DATABASE_URL"], row_factory=dict_row,
+                         options="-c default_transaction_read_only=on") as conn:
         vacancies = fetch_vacancies(conn)
     save(vacancies)
     report(vacancies)
@@ -34,7 +35,8 @@ def index() -> None:
     vacancies = load()
     if not vacancies:
         sys.exit("no vacancies to index; run sync first")
-    build_index(vacancies, "data/index")
+    prev = "data/index-prev" if os.path.isdir("data/index-prev") else None
+    build_index(vacancies, "data/index", previous_db_path=prev)
     print(f"indexed {len(vacancies)} vacancies in {time.time() - t0:.1f}s")
 
 
@@ -56,10 +58,22 @@ def search_cmd() -> None:
         print(f"{h.score:8.3f}  {h.title}\n          {h.link}")
 
 
-def _table():
+def _table(path: str = "data/index"):
     import lancedb
 
-    return lancedb.connect("data/index").open_table("vacancies")
+    return lancedb.connect(path).open_table("vacancies")
+
+
+def download_snapshot(tag: str) -> str:
+    """Download the tagged index from HF_INDEX_REPO; returns the local dir."""
+    from huggingface_hub import snapshot_download
+
+    repo = os.environ.get("HF_INDEX_REPO")
+    if not repo:
+        sys.exit("HF_INDEX_REPO is not set; --snapshot needs the index repo to download the tag")
+    local_dir = f"data/eval-{tag}"
+    snapshot_download(repo, repo_type="dataset", revision=tag, local_dir=local_dir)
+    return local_dir
 
 
 def pool_cmd() -> None:
@@ -96,8 +110,10 @@ def eval_cmd() -> None:
     from copilot.evaluate import load_queries, run_eval
 
     ap = argparse.ArgumentParser(prog="python -m copilot eval")
-    ap.add_argument("--snapshot", help="HF index tag recorded in results (default: date-rowcount)")
-    res = run_eval(load_queries(), _table(), snapshot=ap.parse_args(sys.argv[2:]).snapshot)
+    ap.add_argument("--snapshot", help="HF index tag to download and score (default: local data/index, date-rowcount)")
+    tag = ap.parse_args(sys.argv[2:]).snapshot
+    table = _table(download_snapshot(tag)) if tag else _table()
+    res = run_eval(load_queries(), table, snapshot=tag)
     print(f"evaluated {res['queries_used']} labelled queries; see eval/results.md")
 
 

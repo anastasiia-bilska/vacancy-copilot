@@ -52,3 +52,36 @@ def test_to_usd_month():
     assert to_usd_month(100, "EUR", "month") == 100 * index.EUR_USD
     assert to_usd_month(1000, "UAH", "month") == 1000 * index.UAH_USD
     assert to_usd_month(None, None, None) is None
+
+
+def test_incremental_build_reuses_unchanged_vectors(tmp_path, capsys):
+    prev, new = str(tmp_path / "prev"), str(tmp_path / "new")
+    build_index([vac(1, "Python Dev"), vac(2, "Go Dev")], prev, embed_fn=fake_embed)
+    seen = []
+
+    def counting(texts):
+        seen.extend(texts)
+        return fake_embed([t + " v2" for t in texts])  # distinct vectors expose any re-embedding
+
+    vs = [vac(1, "Python Dev"), vac(2, "Go Dev", raw_item_id=20), vac(3, "Rust Dev")]
+    build_index(vs, new, embed_fn=counting, previous_db_path=prev)
+    assert len(seen) == 2
+    old = {r["id"]: r["vector"] for r in lancedb.connect(prev).open_table("vacancies").to_arrow().to_pylist()}
+    cur = {r["id"]: r["vector"] for r in lancedb.connect(new).open_table("vacancies").to_arrow().to_pylist()}
+    assert cur["dou:1"] == old["dou:1"] and cur["dou:2"] != old["dou:2"]
+    assert "reused 1, embedded 2" in capsys.readouterr().out
+
+
+def test_missing_previous_index_embeds_all(tmp_path):
+    seen = []
+    build_index([vac(1, "A")], str(tmp_path / "i"), embed_fn=lambda t: seen.extend(t) or fake_embed(t),
+                previous_db_path=str(tmp_path / "nope"))
+    assert len(seen) == 1
+
+
+def test_rebuild_does_not_accumulate_versions(tmp_path):
+    p = str(tmp_path)
+    build_index([vac(1, "A")], p, embed_fn=fake_embed)
+    n = len(lancedb.connect(p).open_table("vacancies").list_versions())
+    build_index([vac(1, "A")], p, embed_fn=fake_embed)
+    assert len(lancedb.connect(p).open_table("vacancies").list_versions()) == n

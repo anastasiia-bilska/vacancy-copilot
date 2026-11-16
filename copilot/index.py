@@ -4,7 +4,9 @@ Chunking: one row per vacancy; bge-m3's 8192-token limit truncates long texts.
 Pending real token stats (`python -m copilot stats`); if p90 exceeds 8192, split
 into a `chunks` table and aggregate by max score at search time.
 """
+import shutil
 from dataclasses import asdict
+from pathlib import Path
 
 import lancedb
 import numpy as np
@@ -39,9 +41,26 @@ SCHEMA = pa.schema([
 ])
 
 
-def build_index(vacancies, db_path: str, embed_fn=embed) -> None:
+def _previous_vectors(previous_db_path: str | None) -> dict:
+    """(id, raw_item_id) -> vector from an earlier index; empty if there is none."""
+    if not previous_db_path or not Path(previous_db_path).is_dir():
+        return {}
+    db = lancedb.connect(previous_db_path)
+    if "vacancies" not in db.list_tables().tables:
+        return {}
+    cols = db.open_table("vacancies").to_arrow().select(["id", "raw_item_id", "vector"]).to_pylist()
+    return {(r["id"], r["raw_item_id"]): r["vector"] for r in cols}
+
+
+def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str | None = None) -> None:
+    """Rebuild db_path from scratch; reuse vectors from previous_db_path for unchanged vacancies."""
     texts = [f"{v.title}\n\n{v.description}" for v in vacancies]
-    vectors = embed_fn(texts)
+    prev = _previous_vectors(previous_db_path)
+    todo = [i for i, v in enumerate(vacancies) if (v.id, v.raw_item_id) not in prev]
+    fresh = dict(zip(todo, embed_fn([texts[i] for i in todo]))) if todo else {}
+    vectors = np.array([fresh[i] if i in fresh else prev[(v.id, v.raw_item_id)] for i, v in enumerate(vacancies)],
+                       dtype="float32")
+    print(f"reused {len(vacancies) - len(todo)}, embedded {len(todo)}")
     groups = group_duplicates([v.id for v in vacancies], np.asarray(vectors), [v.title for v in vacancies])
     rows = [
         {
@@ -57,6 +76,9 @@ def build_index(vacancies, db_path: str, embed_fn=embed) -> None:
         }
         for v, text, vec in zip(vacancies, texts, vectors)
     ]
+    # Fresh directory: overwrite would keep old LanceDB versions, which publish would upload.
+    if not previous_db_path or Path(db_path).resolve() != Path(previous_db_path).resolve():
+        shutil.rmtree(db_path, ignore_errors=True)
     table = lancedb.connect(db_path).create_table(
         "vacancies", pa.Table.from_pylist(rows, schema=SCHEMA), mode="overwrite"
     )

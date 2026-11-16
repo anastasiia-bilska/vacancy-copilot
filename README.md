@@ -2,6 +2,7 @@
 title: Vacancy Copilot
 emoji: 🔎
 sdk: gradio
+sdk_version: 6.32.0
 app_file: app.py
 python_version: "3.12"
 pinned: false
@@ -66,6 +67,9 @@ Without `HF_INDEX_REPO` the app uses the local `data/index`.
 Done by the owner; nothing here is run by CI setup or by the agent.
 
 1. Create a private dataset repo for the index and a Gradio Space (free CPU).
+   Before the first sync, check that role `copilot` can `SELECT` from `vacancy_current`, `raw_item` and
+   `extraction_skill_resolved` (and the tables/views under it): `select 1 from extraction_skill_resolved limit 1`
+   as `copilot`.
 2. GitHub repo secrets: `COPILOT_DATABASE_URL`, `HF_TOKEN` (write), `HF_INDEX_REPO`
    (`user/name` of the dataset), `HF_SPACE_ID` (`user/space`, used for `restart_space`).
 3. Space secrets: `HF_TOKEN` (read), `HF_INDEX_REPO`.
@@ -80,6 +84,8 @@ Done by the owner; nothing here is run by CI setup or by the agent.
    uv run python -m copilot eval --snapshot eval-<date of the snapshot>
    ```
    An existing tag is refused, never moved.
+   Do not re-run `sync` or `index` between `pool`/`label` and `publish --tag`: labels are dedup
+   group ids of the current local index, and a rebuild can change them, so labels and tagged index diverge.
 6. Run the `publish` workflow by hand (Actions, workflow_dispatch). Expected: green, logs show
    counts only, the Space reloads and answers a query. After that it runs daily at 04:00 UTC
    (sync, index, publish, restart Space). GitHub disables scheduled workflows in public repos

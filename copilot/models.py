@@ -3,7 +3,10 @@ from functools import cache
 
 import numpy as np
 
+# ponytail: 8192 is bge-m3's max; revisit with real `stats` p90 (CPU embed time grows with length)
 MAX_SEQ_LENGTH = 8192
+# Reranker sees up to 30 (query, text) pairs per search on a free 2-vCPU CPU: keep it short.
+RERANK_MAX_LENGTH = 512
 
 
 @cache
@@ -19,7 +22,7 @@ def _embedder():
 def _reranker():
     from sentence_transformers import CrossEncoder
 
-    return CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=MAX_SEQ_LENGTH)
+    return CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=RERANK_MAX_LENGTH)
 
 
 def embed(texts: list[str]) -> np.ndarray:

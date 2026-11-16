@@ -41,3 +41,7 @@ def test_sync_output_has_no_description(capsys):
     report([vac(description="SECRET-TEXT")])
     out = capsys.readouterr().out
     assert "SECRET-TEXT" not in out and "dou" in out
+
+
+def test_null_description_becomes_empty():
+    assert vac(description=None).description == ""

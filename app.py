@@ -1,4 +1,4 @@
-"""Gradio demo: hybrid vacancy search + eval results. Models and index load lazily."""
+"""Gradio demo: hybrid vacancy search + eval results. Index loads at startup; models lazily."""
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -73,6 +73,7 @@ def build_ui() -> gr.Blocks:
 
 
 def main() -> None:
+    _table()  # download the index and open it before serving, not on the first search
     build_ui().launch()
 
 

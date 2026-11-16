@@ -23,19 +23,29 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-models-BAAI-bge-m3-BAAI-bge-reranker-v2-m3
       - name: sync
-        run: uv run python -m copilot sync
+        run: uv run --frozen --no-dev python -m copilot sync
         env:
           COPILOT_DATABASE_URL: ${{ secrets.COPILOT_DATABASE_URL }}
+      - name: download previous index
+        # Reuses vectors of unchanged vacancies; a new or empty repo just means a full embed.
+        run: >
+          uv run --frozen --no-dev python -c
+          "import os; from huggingface_hub import snapshot_download;
+          snapshot_download(os.environ['HF_INDEX_REPO'], repo_type='dataset', local_dir='data/index-prev')"
+          || echo "no previous index; embedding all"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
       - name: index
-        run: uv run python -m copilot index
+        run: uv run --frozen --no-dev python -m copilot index
       - name: publish
-        run: uv run python -m copilot publish
+        run: uv run --frozen --no-dev python -m copilot publish
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
       - name: restart space
         run: >
-          uv run python -c
+          uv run --frozen --no-dev python -c
           "import os; from huggingface_hub import HfApi;
           HfApi().restart_space(os.environ['SPACE_ID'])"
         env:

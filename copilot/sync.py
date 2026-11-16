@@ -11,7 +11,7 @@ PATH = "data/vacancies.parquet"
 # extraction_skill_resolved gives canonical names; unresolved raw names (skill_name NULL) are dropped.
 SQL = """
 select v.source, v.external_id, v.raw_item_id, v.title, v.link,
-       r.payload ->> 'description' as description,
+       coalesce(r.payload ->> 'description', '') as description,
        v.role, v.seniority, v.salary_min, v.salary_max, v.salary_currency, v.salary_period,
        v.work_format, v.locations, v.english, v.domain, v.last_seen,
        (select array_agg(distinct s.skill_name order by s.skill_name)
@@ -57,7 +57,7 @@ def row_to_vacancy(row: dict) -> Vacancy:
         raw_item_id=row["raw_item_id"],
         title=row["title"],
         link=row["link"],
-        description=row["description"],
+        description=row["description"] or "",
         role=row["role"],
         seniority=row["seniority"],
         salary_min=num(row["salary_min"]),
