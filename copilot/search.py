@@ -1,5 +1,6 @@
 """Hybrid search over the vacancies table: BM25 + vector, fused by RRF, optionally reranked."""
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from typing import Literal
 
 from copilot.models import embed, rerank
@@ -9,7 +10,7 @@ RERANK_TOP = 30  # reranker sees at most this many fused candidates
 COLUMNS = [
     "id", "title", "link", "source", "role", "seniority", "work_format", "locations", "english",
     "domain", "salary_min", "salary_max", "salary_currency", "salary_period", "salary_usd_month",
-    "skills", "text",
+    "skills", "text", "group_id",
 ]
 
 
@@ -31,6 +32,7 @@ class Hit:  # no description field: description text must never reach results
     link: str
     source: str
     score: float
+    links: list[str] = field(default_factory=list)
     role: str | None = None
     seniority: str | None = None
     work_format: str | None = None
@@ -55,6 +57,8 @@ def filters_to_where(f: Filters) -> str | None:
     if f.location is not None:
         parts.append(f"array_has(locations, {_q(f.location)})")
     if f.min_salary_usd_month is not None:
+        if not math.isfinite(f.min_salary_usd_month):
+            raise ValueError("min_salary_usd_month must be finite")
         parts.append(f"salary_usd_month >= {float(f.min_salary_usd_month)}")
     return " AND ".join(parts) or None
 
@@ -81,21 +85,21 @@ def search(
         return []
     where = filters_to_where(filters) if filters else None
 
-    def run(q):
+    def run(q, score_col):
         if where:
             q = q.where(where, prefilter=True)
-        return q.select(COLUMNS).limit(POOL).to_list()
+        return q.select([*COLUMNS, score_col]).limit(POOL).to_list()
 
     rows: dict[str, dict] = {}
     rankings: list[list[str]] = []
     scores: dict[str, float] = {}
     if mode != "vector":
-        got = run(table.search(query, query_type="fts"))
+        got = run(table.search(query, query_type="fts"), "_score")
         rows.update({r["id"]: r for r in got})
         rankings.append([r["id"] for r in got])
         scores = {r["id"]: r["_score"] for r in got}
     if mode != "bm25":
-        got = run(table.search(embed_fn([query])[0]))
+        got = run(table.search(embed_fn([query])[0]), "_distance")
         for r in got:
             rows.setdefault(r["id"], r)
         rankings.append([r["id"] for r in got])
@@ -111,4 +115,21 @@ def search(
         ids.sort(key=lambda i: -scores[i])
     elif mode in ("bm25", "vector"):
         ids = rankings[0]
-    return [Hit(**{c: rows[i][c] for c in COLUMNS if c != "text"}, score=float(scores[i])) for i in ids[:k]]
+    # Group after ranking, before cutting to k: k hits are k distinct groups.
+    best: dict[str, str] = {}  # group id -> best-ranked member id
+    for i in ids:
+        best.setdefault(rows[i]["group_id"], i)
+    top = list(best.items())[:k]
+    links: dict[str, list[str]] = {}
+    if top:
+        where_g = "group_id IN (" + ", ".join(_q(g) for g, _ in top) + ")"
+        for r in table.search().where(where_g).select(["id", "link", "group_id"]).limit(None).to_list():
+            links.setdefault(r["group_id"], []).append(r)
+    hits = []
+    for g, i in top:
+        r = rows[i]
+        ls = [m["link"] for m in sorted(links.get(g, []), key=lambda m: m["id"])]
+        ls = [r["link"]] + [x for x in ls if x != r["link"]]
+        hits.append(Hit(**{c: r[c] for c in COLUMNS if c not in ("text", "group_id", "id")},
+                        id=g, links=ls, score=float(scores[i])))
+    return hits

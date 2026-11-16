@@ -7,9 +7,11 @@ into a `chunks` table and aggregate by max score at search time.
 from dataclasses import asdict
 
 import lancedb
+import numpy as np
 import pyarrow as pa
 from lancedb.index import FTS
 
+from copilot.dedup import group_duplicates
 from copilot.models import embed
 
 # ponytail: fixed FX rates, fetch daily if salary filtering needs precision
@@ -33,17 +35,19 @@ SCHEMA = pa.schema([
     ("salary_min", _F), ("salary_max", _F), ("salary_currency", _S), ("salary_period", _S),
     ("work_format", _S), ("locations", _L), ("english", _S), ("domain", _S), ("skills", _L),
     ("last_seen", pa.timestamp("us")), ("text", _S),
-    ("vector", pa.list_(pa.float32(), 1024)), ("salary_usd_month", _F),
+    ("vector", pa.list_(pa.float32(), 1024)), ("salary_usd_month", _F), ("group_id", _S),
 ])
 
 
 def build_index(vacancies, db_path: str, embed_fn=embed) -> None:
     texts = [f"{v.title}\n\n{v.description}" for v in vacancies]
     vectors = embed_fn(texts)
+    groups = group_duplicates([v.id for v in vacancies], np.asarray(vectors), [v.title for v in vacancies])
     rows = [
         {
             **asdict(v),
             "text": text,
+            "group_id": groups[v.id],
             "vector": vec.tolist(),
             "salary_usd_month": to_usd_month(
                 v.salary_min if v.salary_min is not None else v.salary_max,
