@@ -56,9 +56,36 @@ def search_cmd() -> None:
         print(f"{h.score:8.3f}  {h.title}\n          {h.link}")
 
 
-COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd}
+def _table():
+    import lancedb
+
+    return lancedb.connect("data/index").open_table("vacancies")
+
+
+def pool_cmd() -> None:
+    from copilot.evaluate import load_queries, pool
+
+    rows = pool(load_queries(), _table())
+    print(f"wrote {len(rows)} rows to eval/pool.csv")
+
+
+def label_cmd() -> None:
+    from copilot.evaluate import apply_labels
+
+    apply_labels("eval/pool.csv", "eval/queries.jsonl")
+
+
+def eval_cmd() -> None:
+    from copilot.evaluate import load_queries, run_eval
+
+    res = run_eval(load_queries(), _table())
+    print(f"evaluated {res['queries_used']} labelled queries; see eval/results.md")
+
+
+COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd,
+            "pool": pool_cmd, "label": label_cmd, "eval": eval_cmd}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] != "search"):
-        sys.exit("usage: python -m copilot sync|stats|index|search")
+        sys.exit("usage: python -m copilot sync|stats|index|search|pool|label|eval")
     COMMANDS[sys.argv[1]]()

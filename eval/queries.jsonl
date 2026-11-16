@@ -1,0 +1,3 @@
+{"id": "q01", "query": "Python бекенд розробник з досвідом Django", "filters": null, "relevant": []}
+{"id": "q02", "query": "senior React frontend engineer", "filters": null, "relevant": []}
+{"id": "q03", "query": "DevOps engineer Kubernetes", "filters": {"work_format": "remote", "min_salary_usd_month": 3000}, "relevant": []}
