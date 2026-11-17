@@ -43,8 +43,6 @@ def _count(path: str) -> int | None:
 def index() -> None:
     import time
 
-    import pyarrow as pa
-
     from copilot.index import build_index
 
     t0 = time.time()
@@ -53,10 +51,7 @@ def index() -> None:
         sys.exit("no vacancies to index; run sync first")
     prev = "data/index-prev" if os.path.isdir("data/index-prev") else None
     check_not_shrunk(len(vacancies), _count(prev) if prev else None, allow="--allow-shrink" in sys.argv)
-    try:
-        build_index(vacancies, "data/index", previous_db_path=prev)
-    except pa.ArrowException as e:  # its message can quote a row value; Actions logs are public
-        sys.exit(f"index build failed: {type(e).__name__} (message withheld: may contain vacancy text)")
+    build_index(vacancies, "data/index", previous_db_path=prev)
     print(f"indexed {len(vacancies)} vacancies in {time.time() - t0:.1f}s")
 
 
@@ -140,7 +135,20 @@ def eval_cmd() -> None:
 COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd,
             "pool": pool_cmd, "label": label_cmd, "eval": eval_cmd, "publish": publish_cmd}
 
+def run(cmd: str) -> None:
+    """In GitHub Actions (public logs) an error shows its type only: messages from psycopg, Arrow
+    or LanceDB can quote row values, i.e. vacancy text. Locally the full traceback stays."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return COMMANDS[cmd]()
+    try:
+        COMMANDS[cmd]()
+    except SystemExit:
+        raise
+    except Exception as e:
+        sys.exit(f"{cmd} failed: {type(e).__name__} (message withheld in CI logs)")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] not in ("search", "eval", "publish", "index")):
         sys.exit("usage: python -m copilot sync|stats|index|search|pool|label|eval|publish")
-    COMMANDS[sys.argv[1]]()
+    run(sys.argv[1])

@@ -25,3 +25,19 @@ def test_index_refuses_a_sharp_drop():
     check_not_shrunk(100, 10000, allow=True)
     with pytest.raises(SystemExit, match="under 50%"):
         check_not_shrunk(100, 10000)
+
+
+def test_ci_errors_withhold_the_message(monkeypatch, capsys):
+    import copilot.__main__ as cli
+
+    def boom():
+        raise ValueError("SECRET-TEXT from a vacancy")
+
+    monkeypatch.setitem(cli.COMMANDS, "boom", boom)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(SystemExit) as e:
+        cli.run("boom")
+    assert "SECRET-TEXT" not in str(e.value) and "ValueError" in str(e.value)
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    with pytest.raises(ValueError):
+        cli.run("boom")
