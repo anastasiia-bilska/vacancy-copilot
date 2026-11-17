@@ -16,3 +16,12 @@ def test_eval_snapshot_requires_repo(monkeypatch):
     monkeypatch.delenv("HF_INDEX_REPO", raising=False)
     with pytest.raises(SystemExit, match="HF_INDEX_REPO"):
         cli.download_snapshot("eval-x")
+
+
+def test_index_refuses_a_sharp_drop():
+    from copilot.__main__ import check_not_shrunk
+    check_not_shrunk(9000, 10000)
+    check_not_shrunk(100, None)
+    check_not_shrunk(100, 10000, allow=True)
+    with pytest.raises(SystemExit, match="under 50%"):
+        check_not_shrunk(100, 10000)

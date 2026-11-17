@@ -7,13 +7,16 @@ import numpy as np
 MAX_SEQ_LENGTH = 8192
 # Reranker sees up to 30 (query, text) pairs per search on a free 2-vCPU CPU: keep it short.
 RERANK_MAX_LENGTH = 512
+EMBED_MODEL = "BAAI/bge-m3"
+# Stored with the index; vectors are reused only when it matches. Bump "tpl" when copilot.index.text_of changes.
+EMBED_FINGERPRINT = f"{EMBED_MODEL}|max_seq={MAX_SEQ_LENGTH}|tpl=1"
 
 
 @cache
 def _embedder():
     from sentence_transformers import SentenceTransformer
 
-    m = SentenceTransformer("BAAI/bge-m3")
+    m = SentenceTransformer(EMBED_MODEL)
     m.max_seq_length = MAX_SEQ_LENGTH
     return m
 

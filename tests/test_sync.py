@@ -45,3 +45,8 @@ def test_sync_output_has_no_description(capsys):
 
 def test_null_description_becomes_empty():
     assert vac(description=None).description == ""
+
+
+def test_report_counts_empty_descriptions(capsys):
+    report([vac(description=""), vac(description="text")])
+    assert "empty description: 1" in capsys.readouterr().out

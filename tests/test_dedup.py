@@ -36,3 +36,10 @@ def test_search_returns_one_hit_with_both_links(tmp_path):
 def test_non_finite_salary_rejected(bad):
     with pytest.raises(ValueError):
         filters_to_where(Filters(min_salary_usd_month=bad))
+
+
+def test_duplicates_group_transitively():
+    v = np.array([fake_embed(["a"])[0]] * 3)
+    g = group_duplicates(["dou:1", "djinni:2", "dou:3"], v,
+                         ["python developer", "python developer senior", "senior python developer kyiv"])
+    assert len(set(g.values())) == 1

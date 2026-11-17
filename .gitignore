@@ -5,3 +5,4 @@ cv/
 __pycache__/
 .superpowers/
 eval/pool.csv
+.coverage

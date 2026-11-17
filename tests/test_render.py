@@ -36,7 +36,11 @@ def test_title_escaped_and_only_http_links():
 
 def test_app_builds_and_bad_salary_is_a_message(monkeypatch, tmp_path):
     import app
-    monkeypatch.setattr(app, "_table", lambda: make(tmp_path, [vac(1, "Python")]))
-    app.build_ui()
-    out = app.run_search("python", "bm25", "", "", "", "", "", "", float("inf"))
-    assert "Invalid filter" in out
+    t = make(tmp_path, [vac(1, "Python", locations=["Kyiv", "Київ"]), vac(2, "Go", locations=["Kyiv"])])
+    monkeypatch.setattr(app, "_table", lambda: t)
+    opts = app.choices(t)
+    assert opts["locations"] == ["Kyiv", "Київ"]  # values from the index, most frequent first
+    app.build_ui(opts)
+    out = app.run_search("python", "bm25", "", "", "", [], "", "", float("inf"))
+    assert "Invalid request" in out
+    assert "Invalid request" in app.run_search("python", "junk", "", "", "", [], "", "", None)

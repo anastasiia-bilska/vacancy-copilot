@@ -51,6 +51,7 @@ uv sync
 export COPILOT_DATABASE_URL=...        # read-only role `copilot`
 uv run python -m copilot sync          # Neon -> data/ (counts only)
 uv run python -m copilot index         # data/index (downloads models on first run)
+                                       # refuses a corpus under 50% of data/index-prev; --allow-shrink if real
 uv run python -m copilot search "python backend remote" --mode rerank
 uv run python app.py                   # Gradio UI
 
@@ -61,6 +62,11 @@ uv run pytest
 ```
 
 Without `HF_INDEX_REPO` the app uses the local `data/index`.
+
+Filters in the app come from values present in the index. Location is "any of", because IT Pulse
+stores cities in the language of the posting ("Kyiv" and "Київ" are separate values). The salary
+filter means "can pay at least X USD/month" (top of the range, or the only number given) and hides
+vacancies without a salary. The app defaults to `hybrid`; `rerank` is slower on a free CPU.
 
 ## Deploy
 

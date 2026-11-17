@@ -1,3 +1,4 @@
+import pytest
 import lancedb
 import pyarrow as pa
 
@@ -50,6 +51,36 @@ def test_null_metadata_found_without_filter_excluded_with_filter(tmp_path):
     kw = dict(mode="hybrid", embed_fn=c.embed, rerank_fn=c.rerank)
     assert "dou:1" in [h.id for h in search(t, "Quantum Gardener", **kw)]
     assert "dou:1" not in [h.id for h in search(t, "Quantum Gardener", Filters(work_format="remote"), **kw)]
+
+
+def test_unknown_mode_is_rejected(tmp_path):
+    t = make(tmp_path, [vac(1, "Dev")])
+    with pytest.raises(ValueError, match="unknown mode"):
+        search(t, "Dev", mode="junk")
+
+
+def test_location_matches_any_of_the_given_values(tmp_path):
+    t = make(tmp_path, [vac(1, "Dev A", locations=["Київ"]), vac(2, "Dev B", locations=["Lviv"]),
+                        vac(3, "Dev C", locations=["Kyiv"])])
+    hits = search(t, "Dev", Filters(location=["Kyiv", "Київ"]), mode="bm25")
+    assert sorted(h.id for h in hits) == ["dou:1", "dou:3"]
+
+
+def test_salary_filter_means_can_pay_at_least(tmp_path):
+    t = make(tmp_path, [
+        vac(1, "Dev A", salary_min=2000.0, salary_max=5000.0, salary_currency="USD", salary_period="month"),
+        vac(2, "Dev B", salary_min=2000.0, salary_max=3000.0, salary_currency="USD", salary_period="month"),
+        vac(3, "Dev C"),  # no salary: hidden while the salary filter is on
+    ])
+    hits = search(t, "Dev", Filters(min_salary_usd_month=4000), mode="bm25")
+    assert [h.id for h in hits] == ["dou:1"]
+
+
+def test_rerank_sees_skills_first(tmp_path):
+    seen = []
+    t = make(tmp_path, [vac(1, "Dev", skills=["kafka", "go"])])
+    search(t, "Dev", mode="rerank", embed_fn=fake_embed, rerank_fn=lambda q, xs: seen.extend(xs) or [1.0] * len(xs))
+    assert seen[0].startswith("kafka, go\nDev")
 
 
 def test_salary_filter_across_currencies(tmp_path):

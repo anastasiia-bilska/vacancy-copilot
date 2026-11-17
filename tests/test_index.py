@@ -32,7 +32,8 @@ def vac(i, title, **kw):
 def test_build_index_roundtrip(tmp_path):
     vs = [
         vac(1, "Python Backend Developer", salary_min=1200.0, salary_currency="USD", salary_period="month"),
-        vac(2, "Kubernetes Platform Engineer", salary_max=10.0, salary_currency="USD", salary_period="hour"),
+        vac(2, "Kubernetes Platform Engineer", salary_min=5.0, salary_max=10.0, salary_currency="USD",
+            salary_period="hour"),
         vac(3, "React Frontend Developer"),
     ]
     build_index(vs, str(tmp_path), embed_fn=fake_embed)
@@ -85,3 +86,18 @@ def test_rebuild_does_not_accumulate_versions(tmp_path):
     n = len(lancedb.connect(p).open_table("vacancies").list_versions())
     build_index([vac(1, "A")], p, embed_fn=fake_embed)
     assert len(lancedb.connect(p).open_table("vacancies").list_versions()) == n
+
+
+def test_changed_fingerprint_reembeds_everything(tmp_path, monkeypatch):
+    prev, new = str(tmp_path / "prev"), str(tmp_path / "new")
+    build_index([vac(1, "Python Dev")], prev, embed_fn=fake_embed)
+    monkeypatch.setattr(index, "EMBED_FINGERPRINT", "other-model|max_seq=1024|tpl=1")
+    seen = []
+    build_index([vac(1, "Python Dev")], new, embed_fn=lambda t: seen.extend(t) or fake_embed(t),
+                previous_db_path=prev)
+    assert len(seen) == 1
+
+
+def test_description_stored_once(tmp_path):
+    build_index([vac(1, "A")], str(tmp_path), embed_fn=fake_embed)
+    assert "description" not in lancedb.connect(str(tmp_path)).open_table("vacancies").schema.names

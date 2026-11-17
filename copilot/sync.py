@@ -95,3 +95,5 @@ def report(vacancies: list[Vacancy]) -> None:
     for source, n in sorted(counts.items()):
         print(f"{source}: {n}")
     print(f"total: {len(vacancies)}")
+    # A renamed payload key would silently index titles only: make it visible.
+    print(f"empty description: {sum(1 for v in vacancies if not v.description.strip())}")

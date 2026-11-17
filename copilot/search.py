@@ -5,6 +5,8 @@ from typing import Literal
 
 from copilot.models import embed, rerank
 
+MODES = ("bm25", "vector", "hybrid", "rerank")
+Mode = Literal["bm25", "vector", "hybrid", "rerank"]
 POOL = 50  # candidates taken from each list before fusion
 RERANK_TOP = 30  # reranker sees at most this many fused candidates
 COLUMNS = [
@@ -19,7 +21,7 @@ class Filters:
     role: str | None = None
     seniority: str | None = None
     work_format: str | None = None
-    location: str | None = None
+    location: str | list[str] | None = None  # any of these; values as stored (e.g. "Kyiv", "Київ")
     english: str | None = None
     domain: str | None = None
     min_salary_usd_month: float | None = None
@@ -54,8 +56,9 @@ def _q(v: str) -> str:
 def filters_to_where(f: Filters) -> str | None:
     parts = [f"{c} = {_q(v)}" for c in ("role", "seniority", "work_format", "english", "domain")
              if (v := getattr(f, c)) is not None]
-    if f.location is not None:
-        parts.append(f"array_has(locations, {_q(f.location)})")
+    locs = [f.location] if isinstance(f.location, str) else list(f.location or [])
+    if locs:
+        parts.append("array_has_any(locations, make_array(" + ", ".join(_q(x) for x in locs) + "))")
     if f.min_salary_usd_month is not None:
         if not math.isfinite(f.min_salary_usd_month):
             raise ValueError("min_salary_usd_month must be finite")
@@ -76,11 +79,19 @@ def rrf(rankings: list[list[str]], k: int = 60) -> list[str]:
     return sorted(scores, key=lambda i: -scores[i])
 
 
+def _rerank_text(r: dict) -> str:
+    # The reranker reads only its first 512 tokens: put skills before the description.
+    skills = ", ".join(r["skills"] or [])
+    return f"{skills}\n{r['text']}" if skills else r["text"]
+
+
 def search(
     table, query: str, filters: Filters | None = None,
-    mode: Literal["bm25", "vector", "hybrid", "rerank"] = "rerank", k: int = 20,
+    mode: Mode = "rerank", k: int = 20,
     embed_fn=embed, rerank_fn=rerank,
 ) -> list[Hit]:
+    if mode not in MODES:
+        raise ValueError(f"unknown mode {mode!r}; expected one of {', '.join(MODES)}")
     if not query.strip():
         return []
     where = filters_to_where(filters) if filters else None
@@ -111,7 +122,7 @@ def search(
     ids = rrf(rankings)
     if mode == "rerank" and ids:
         ids = ids[:RERANK_TOP]
-        scores = dict(zip(ids, rerank_fn(query, [rows[i]["text"] for i in ids])))
+        scores = dict(zip(ids, rerank_fn(query, [_rerank_text(rows[i]) for i in ids])))
         ids.sort(key=lambda i: -scores[i])
     elif mode in ("bm25", "vector"):
         ids = rankings[0]

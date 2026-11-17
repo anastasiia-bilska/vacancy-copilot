@@ -14,7 +14,7 @@ def group_duplicates(
     """Map each id to its group id (smallest id in the group)."""
     v = np.asarray(vectors, dtype="float32")
     v = v / np.maximum(np.linalg.norm(v, axis=1, keepdims=True), 1e-12)
-    # ponytail: O(n²) over ~10k vacancies, use ANN if the corpus grows past ~50k
+    # ponytail: O(n²) dense matrix, ~0.5 GB at 10k and ~2 GB at 20k; use ANN or blocks past ~20k
     sim = v @ v.T
     toks = [_tokens(t) for t in titles]
     parent = list(range(len(ids)))

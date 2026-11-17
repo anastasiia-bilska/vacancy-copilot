@@ -9,7 +9,7 @@ def sync() -> None:
     from psycopg.rows import dict_row
 
     with psycopg.connect(os.environ["COPILOT_DATABASE_URL"], row_factory=dict_row,
-                         options="-c default_transaction_read_only=on") as conn:
+                         options="-c default_transaction_read_only=on -c statement_timeout=120000") as conn:
         vacancies = fetch_vacancies(conn)
     save(vacancies)
     report(vacancies)
@@ -26,8 +26,24 @@ def stats() -> None:
         print(f"{name}: {lengths[min(len(lengths) - 1, int(q * len(lengths)))]} tokens")
 
 
+def check_not_shrunk(new: int, previous: int | None, allow: bool = False) -> None:
+    """Refuse to replace the published index with one under half its size (a broken upstream)."""
+    if previous and new < 0.5 * previous and not allow:
+        sys.exit(f"refusing to index {new} vacancies: previous index had {previous} (under 50%); "
+                 "pass --allow-shrink if the drop is real")
+
+
+def _count(path: str) -> int | None:
+    try:
+        return _table(path).count_rows()
+    except Exception:  # no previous index, or not a LanceDB table
+        return None
+
+
 def index() -> None:
     import time
+
+    import pyarrow as pa
 
     from copilot.index import build_index
 
@@ -36,7 +52,11 @@ def index() -> None:
     if not vacancies:
         sys.exit("no vacancies to index; run sync first")
     prev = "data/index-prev" if os.path.isdir("data/index-prev") else None
-    build_index(vacancies, "data/index", previous_db_path=prev)
+    check_not_shrunk(len(vacancies), _count(prev) if prev else None, allow="--allow-shrink" in sys.argv)
+    try:
+        build_index(vacancies, "data/index", previous_db_path=prev)
+    except pa.ArrowException as e:  # its message can quote a row value; Actions logs are public
+        sys.exit(f"index build failed: {type(e).__name__} (message withheld: may contain vacancy text)")
     print(f"indexed {len(vacancies)} vacancies in {time.time() - t0:.1f}s")
 
 
@@ -45,11 +65,11 @@ def search_cmd() -> None:
 
     import lancedb
 
-    from copilot.search import search
+    from copilot.search import MODES, search
 
     ap = argparse.ArgumentParser(prog="python -m copilot search")
     ap.add_argument("query")
-    ap.add_argument("--mode", choices=["bm25", "vector", "hybrid", "rerank"], default="rerank")
+    ap.add_argument("--mode", choices=MODES, default="rerank")
     args = ap.parse_args(sys.argv[2:])
     if not args.query.strip():
         sys.exit("empty query")
@@ -121,6 +141,6 @@ COMMANDS = {"sync": sync, "stats": stats, "index": index, "search": search_cmd,
             "pool": pool_cmd, "label": label_cmd, "eval": eval_cmd, "publish": publish_cmd}
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] not in ("search", "eval", "publish")):
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS or (len(sys.argv) != 2 and sys.argv[1] not in ("search", "eval", "publish", "index")):
         sys.exit("usage: python -m copilot sync|stats|index|search|pool|label|eval|publish")
     COMMANDS[sys.argv[1]]()

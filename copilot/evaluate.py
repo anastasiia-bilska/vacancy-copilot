@@ -5,9 +5,9 @@ import os
 from datetime import date
 
 from copilot.models import embed, rerank
-from copilot.search import Filters, search
+from copilot.search import MODES, Filters, search
 
-VARIANTS = ["bm25", "vector", "hybrid", "rerank"]
+VARIANTS = list(MODES)
 KS = (5, 10, 20)
 TRUE = {"1", "y", "yes", "true", "+"}
 

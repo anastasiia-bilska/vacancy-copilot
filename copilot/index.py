@@ -14,7 +14,7 @@ import pyarrow as pa
 from lancedb.index import FTS
 
 from copilot.dedup import group_duplicates
-from copilot.models import embed
+from copilot.models import EMBED_FINGERPRINT, embed
 
 # ponytail: fixed FX rates, fetch daily if salary filtering needs precision
 EUR_USD = 1.08
@@ -33,12 +33,17 @@ _S, _F, _L = pa.string(), pa.float64(), pa.list_(pa.string())
 # Explicit schema: all-null metadata columns must still be typed, and vector must be fixed-size.
 SCHEMA = pa.schema([
     ("id", _S), ("source", _S), ("external_id", _S), ("raw_item_id", pa.int64()),
-    ("title", _S), ("link", _S), ("description", _S), ("role", _S), ("seniority", _S),
+    ("title", _S), ("link", _S), ("role", _S), ("seniority", _S),
     ("salary_min", _F), ("salary_max", _F), ("salary_currency", _S), ("salary_period", _S),
     ("work_format", _S), ("locations", _L), ("english", _S), ("domain", _S), ("skills", _L),
     ("last_seen", pa.timestamp("us")), ("text", _S),
     ("vector", pa.list_(pa.float32(), 1024)), ("salary_usd_month", _F), ("group_id", _S),
-])
+])  # description is not stored: `text` (title + description) already holds it
+
+
+def text_of(v) -> str:
+    """The embedded and full-text-indexed text; its template is part of EMBED_FINGERPRINT."""
+    return f"{v.title}\n\n{v.description}"
 
 
 def _previous_vectors(previous_db_path: str | None) -> dict:
@@ -48,13 +53,16 @@ def _previous_vectors(previous_db_path: str | None) -> dict:
     db = lancedb.connect(previous_db_path)
     if "vacancies" not in db.list_tables().tables:
         return {}
-    cols = db.open_table("vacancies").to_arrow().select(["id", "raw_item_id", "vector"]).to_pylist()
+    table = db.open_table("vacancies")
+    if (table.schema.metadata or {}).get(b"embed_fingerprint") != EMBED_FINGERPRINT.encode():
+        return {}  # different model, max length or text template: vectors are not comparable
+    cols = table.search().select(["id", "raw_item_id", "vector"]).limit(None).to_arrow().to_pylist()
     return {(r["id"], r["raw_item_id"]): r["vector"] for r in cols}
 
 
 def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str | None = None) -> None:
     """Rebuild db_path from scratch; reuse vectors from previous_db_path for unchanged vacancies."""
-    texts = [f"{v.title}\n\n{v.description}" for v in vacancies]
+    texts = [text_of(v) for v in vacancies]
     prev = _previous_vectors(previous_db_path)
     todo = [i for i, v in enumerate(vacancies) if (v.id, v.raw_item_id) not in prev]
     fresh = dict(zip(todo, embed_fn([texts[i] for i in todo]))) if todo else {}
@@ -64,12 +72,13 @@ def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str |
     groups = group_duplicates([v.id for v in vacancies], np.asarray(vectors), [v.title for v in vacancies])
     rows = [
         {
-            **asdict(v),
+            **{k: x for k, x in asdict(v).items() if k != "description"},
             "text": text,
             "group_id": groups[v.id],
             "vector": vec.tolist(),
+            # "can pay at least X": the top of the range, or the only number given
             "salary_usd_month": to_usd_month(
-                v.salary_min if v.salary_min is not None else v.salary_max,
+                v.salary_max if v.salary_max is not None else v.salary_min,
                 v.salary_currency,
                 v.salary_period,
             ),
@@ -80,6 +89,6 @@ def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str |
     if not previous_db_path or Path(db_path).resolve() != Path(previous_db_path).resolve():
         shutil.rmtree(db_path, ignore_errors=True)
     table = lancedb.connect(db_path).create_table(
-        "vacancies", pa.Table.from_pylist(rows, schema=SCHEMA), mode="overwrite"
+        "vacancies", pa.Table.from_pylist(rows, schema=SCHEMA.with_metadata({"embed_fingerprint": EMBED_FINGERPRINT})), mode="overwrite"
     )
     table.create_index("text", config=FTS(), replace=True)
