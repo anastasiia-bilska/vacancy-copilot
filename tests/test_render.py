@@ -10,10 +10,12 @@ def hit(**kw):
 
 def test_render_has_title_link_and_metadata():
     out = render_hits([hit(salary_min=1000, salary_max=2000, salary_currency="USD", salary_period="month",
-                           work_format="remote", locations=["Kyiv"], skills=["python", "sql"])])
-    assert "[Python Dev](https://x/1)" in out
-    for s in ("dou", "USD", "remote", "Kyiv", "python"):
+                           work_format="remote", locations=["Kyiv"], skills=["python", "sql"],
+                           links=["https://jobs.dou.ua/1", "https://djinni.co/2"])], query="Python dev")
+    assert 'href="https://x/1"' in out and ">Python Dev</a>" in out
+    for s in ("1,000–2,000", "USD / month", "Remote", "Kyiv", ">DOU", ">Djinni", "several sites"):
         assert s in out
+    assert '<li class="vc-tag is-match">python</li>' in out and '<li class="vc-tag">sql</li>' in out
 
 
 def test_render_empty():
@@ -27,11 +29,11 @@ def test_description_never_rendered(tmp_path):
 
 
 def test_title_escaped_and_only_http_links():
-    out = render_hits([hit(title="[x](javascript:alert(1)) <b>", link="javascript:alert(1)")])
-    assert "](javascript" not in out and "<b>" not in out
-    assert "\\[x\\]" in out
-    out = render_hits([hit(link="https://x/a)b")])
-    assert "https://x/a%29b" in out
+    out = render_hits([hit(title='<script>x</script>"', link="javascript:alert(1)", links=["javascript:alert(1)"])])
+    assert "<script>" not in out and "javascript:" not in out
+    assert "&lt;script&gt;" in out
+    out = render_hits([hit(link='https://x/a"onmouseover=1')])
+    assert 'href="https://x/a&quot;onmouseover=1"' in out
 
 
 def test_app_builds_and_bad_salary_is_a_message(monkeypatch, tmp_path):
