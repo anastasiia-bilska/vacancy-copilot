@@ -1,0 +1,5 @@
+# Eval
+
+Queries in `queries.jsonl` (Ukrainian and English, some with filters) are scored against four variants: `bm25`, `vector`, `hybrid` and `rerank`. To avoid judging only what one system returns, `python -m copilot pool` unions the top 20 of every variant per query into `pool.csv` (titles and links only, gitignored). Mark relevant rows with `1`, `y`, `yes`, `true` or `+`, then `python -m copilot label` writes the group ids back into `queries.jsonl`. `python -m copilot eval` skips queries with no labels and writes `results.json` (ranked ids only, no vacancy text) and `results.md` with recall@5/10/20 and MRR per variant. Ids are dedup group ids, so labels survive duplicates across sources.
+
+Label and snapshot the same index: run `pool`, `label` and `publish --tag` without re-running `sync` or `index` in between, since group ids can change on rebuild. `eval --snapshot TAG` downloads that tag from `HF_INDEX_REPO` into `data/eval-TAG` and scores it.

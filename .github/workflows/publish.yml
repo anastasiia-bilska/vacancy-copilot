@@ -1,0 +1,58 @@
+name: publish
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+# Logs carry counts only: no set -x, no printing of rows or env (public repo).
+permissions:
+  contents: read
+
+# A manual run and the cron must not publish over each other.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - run: uv python install 3.12
+      - run: uv sync --frozen --no-dev
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-BAAI-bge-m3-BAAI-bge-reranker-v2-m3
+      - name: sync
+        run: uv run --frozen --no-dev python -m copilot sync
+        env:
+          COPILOT_DATABASE_URL: ${{ secrets.COPILOT_DATABASE_URL }}
+      - name: download previous index
+        # Reuses vectors of unchanged vacancies; a new or empty repo just means a full embed.
+        run: >
+          uv run --frozen --no-dev python -c
+          "import os; from huggingface_hub import snapshot_download;
+          snapshot_download(os.environ['HF_INDEX_REPO'], repo_type='dataset', local_dir='data/index-prev')"
+          || echo "no previous index; embedding all"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
+      - name: index
+        run: uv run --frozen --no-dev python -m copilot index
+      - name: publish
+        run: uv run --frozen --no-dev python -m copilot publish
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_INDEX_REPO: ${{ secrets.HF_INDEX_REPO }}
+      - name: restart space
+        run: >
+          uv run --frozen --no-dev python -c
+          "import os; from huggingface_hub import HfApi;
+          HfApi().restart_space(os.environ['SPACE_ID'])"
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_ID: ${{ secrets.HF_SPACE_ID }}
