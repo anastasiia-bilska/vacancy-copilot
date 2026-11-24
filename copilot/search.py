@@ -3,6 +3,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Literal
 
+from copilot.index import stem
 from copilot.models import embed, rerank
 
 MODES = ("bm25", "vector", "hybrid", "rerank")
@@ -92,7 +93,8 @@ def search(
 ) -> list[Hit]:
     if mode not in MODES:
         raise ValueError(f"unknown mode {mode!r}; expected one of {', '.join(MODES)}")
-    if not query.strip():
+    fts_query = stem(query)
+    if not fts_query:  # no word characters at all
         return []
     where = filters_to_where(filters) if filters else None
 
@@ -105,7 +107,7 @@ def search(
     rankings: list[list[str]] = []
     scores: dict[str, float] = {}
     if mode != "vector":
-        got = run(table.search(query, query_type="fts"), "_score")
+        got = run(table.search(fts_query, query_type="fts"), "_score")
         rows.update({r["id"]: r for r in got})
         rankings.append([r["id"] for r in got])
         scores = {r["id"]: r["_score"] for r in got}

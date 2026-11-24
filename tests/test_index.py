@@ -40,7 +40,7 @@ def test_build_index_roundtrip(tmp_path):
     t = lancedb.connect(str(tmp_path)).open_table("vacancies")
     assert t.count_rows() == 3
     assert len(t.to_arrow()["vector"][0]) == 1024
-    hits = t.search("Kubernetes", query_type="fts").limit(5).to_list()
+    hits = t.search(index.stem("Kubernetes"), query_type="fts").limit(5).to_list()
     assert [h["id"] for h in hits] == ["dou:2"]
     sal = {r["id"]: r["salary_usd_month"] for r in t.to_arrow().to_pylist()}
     assert sal == {"dou:1": 1200.0, "dou:2": 1680.0, "dou:3": None}

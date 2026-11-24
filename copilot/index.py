@@ -4,6 +4,7 @@ Chunking: one row per vacancy; bge-m3's 8192-token limit truncates long texts.
 Pending real token stats (`python -m copilot stats`); if p90 exceeds 8192, split
 into a `chunks` table and aggregate by max score at search time.
 """
+import re
 import shutil
 from dataclasses import asdict
 from pathlib import Path
@@ -36,9 +37,20 @@ SCHEMA = pa.schema([
     ("title", _S), ("link", _S), ("role", _S), ("seniority", _S),
     ("salary_min", _F), ("salary_max", _F), ("salary_currency", _S), ("salary_period", _S),
     ("work_format", _S), ("locations", _L), ("english", _S), ("domain", _S), ("skills", _L),
-    ("last_seen", pa.timestamp("us")), ("text", _S),
+    ("last_seen", pa.timestamp("us")), ("text", _S), ("fts", _S),
     ("vector", pa.list_(pa.float32(), 1024)), ("salary_usd_month", _F), ("group_id", _S),
 ])  # description is not stored: `text` (title + description) already holds it
+
+
+# ponytail: prefix stemming (each word cut to 6 chars) because LanceDB has no Ukrainian stemmer and
+# its ngram tokenizer cuts across words and drops 2-letter tokens (Go, QA, ML); swap for a real
+# Ukrainian lemmatizer if eval shows BM25 precision suffering from prefix collisions.
+STEM_LEN = 6
+
+
+def stem(s: str) -> str:
+    """Same transform for the indexed `fts` column and the query: розробники/розробника -> розроб."""
+    return " ".join(w[:STEM_LEN] for w in re.findall(r"\w+", s.lower()))
 
 
 def text_of(v) -> str:
@@ -74,6 +86,7 @@ def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str |
         {
             **{k: x for k, x in asdict(v).items() if k != "description"},
             "text": text,
+            "fts": stem(text),
             "group_id": groups[v.id],
             "vector": vec.tolist(),
             # "can pay at least X": the top of the range, or the only number given
@@ -91,4 +104,4 @@ def build_index(vacancies, db_path: str, embed_fn=embed, previous_db_path: str |
     table = lancedb.connect(db_path).create_table(
         "vacancies", pa.Table.from_pylist(rows, schema=SCHEMA.with_metadata({"embed_fingerprint": EMBED_FINGERPRINT})), mode="overwrite"
     )
-    table.create_index("text", config=FTS(), replace=True)
+    table.create_index("fts", config=FTS(), replace=True)

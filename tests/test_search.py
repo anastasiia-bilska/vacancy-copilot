@@ -102,3 +102,12 @@ def test_index_schema_all_null_metadata(tmp_path):
     assert s.field("vector").type == pa.list_(pa.float32(), 1024)
     assert s.field("role").type == pa.string() and s.field("salary_min").type == pa.float64()
     assert s.field("locations").type == pa.list_(pa.string())
+
+
+def test_bm25_matches_ukrainian_word_forms_and_short_tokens(tmp_path):
+    t = make(tmp_path, [vac(1, "Python розробник", description="шукаємо інженера"),
+                        vac(2, "Go Developer"), vac(3, "QA Engineer")])
+    ids = lambda q: [h.id for h in search(t, q, mode="bm25")]
+    assert ids("розробники") == ["dou:1"] and ids("інженер") == ["dou:1"]
+    assert ids("developers") == ["dou:2"] and ids("Go") == ["dou:2"] and ids("QA") == ["dou:3"]
+    assert ids("!!!") == []
